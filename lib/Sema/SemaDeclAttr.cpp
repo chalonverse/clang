@@ -1495,6 +1495,13 @@ static void handleAnalyzerNoReturnAttr(Sema &S, Decl *D,
                                   Attr.getAttributeSpellingListIndex()));
 }
 
+static void handleAutoArrangeAttr(Sema &S, Decl *D,
+				  const AttributeList &Attr) {
+  D->addAttr(::new (S.Context)
+	     AutoArrangeAttr(Attr.getRange(), S.Context,
+			     Attr.getAttributeSpellingListIndex()));
+}
+
 // PS3 PPU-specific.
 static void handleVecReturnAttr(Sema &S, Decl *D, const AttributeList &Attr) {
 /*
@@ -4096,6 +4103,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case AttributeList::AT_AnalyzerNoReturn:
     handleAnalyzerNoReturnAttr(S, D, Attr);
+    break;
+  case AttributeList::AT_AutoArrange:
+    handleAutoArrangeAttr(S, D, Attr);
     break;
   case AttributeList::AT_TLSModel:
     handleTLSModelAttr(S, D, Attr);

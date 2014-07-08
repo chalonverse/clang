@@ -1159,6 +1159,27 @@ void DeclContext::removeDecl(Decl *D) {
   }
 }
 
+static CharUnits getFieldSize(FieldDecl *FD, TagDecl *T) {
+    // Figure out the size
+    CharUnits FieldSize;
+    ASTContext& Ctx = T->getASTContext();
+
+    if (FD->isBitField()) {
+      FieldSize = Ctx.toCharUnitsFromBits(FD->getBitWidthValue(Ctx));
+    } else if (FD->getType()->isIncompleteArrayType()) {
+      FieldSize = CharUnits::Zero();
+    } else if (const ReferenceType *RT = FD->getType()->getAs<ReferenceType>()) {
+      unsigned AS = RT->getPointeeType().getAddressSpace();
+      FieldSize = Ctx.toCharUnitsFromBits(Ctx.getTargetInfo().getPointerWidth(AS));
+    } else {
+      std::pair<CharUnits, CharUnits> FieldInfo =
+        Ctx.getTypeInfoInChars(FD->getType());
+      FieldSize = FieldInfo.first;
+    }
+    
+    return FieldSize;
+}
+
 void DeclContext::addHiddenDecl(Decl *D) {
   assert(D->getLexicalDeclContext() == this &&
          "Decl inserted into wrong lexical context");
@@ -1166,8 +1187,50 @@ void DeclContext::addHiddenDecl(Decl *D) {
          "Decl already inserted into a DeclContext");
 
   if (FirstDecl) {
-    LastDecl->NextInContextAndBits.setPointer(D);
-    LastDecl = D;
+    // AutoArrange insertion is O(n), but the ordering needs to be done
+    // ASAP as the code everywhere else assumes the order of the members
+    // will never change.
+    CXXRecordDecl *Record = dyn_cast<CXXRecordDecl>(this);
+    if (Record && Record->hasAttr<AutoArrangeAttr>() && isa<FieldDecl>(D)) {
+      FieldDecl *Field = cast<FieldDecl>(D);
+      // Don't run this code if it's a function we're adding
+      if (!Field->isFunctionOrFunctionTemplate()) {
+        // Find where to put it
+        CharUnits NewSize = getFieldSize(Field, Record);
+        Decl* Prev = nullptr;
+        Decl* Curr = FirstDecl;
+        while (Curr != nullptr) {
+          if (FieldDecl *CF = dyn_cast<FieldDecl>(Curr)) {
+            if (!CF->isFunctionOrFunctionTemplate()) {
+              if (getFieldSize(CF, Record) < NewSize) {
+                break;
+              }
+            }
+          }
+          Prev = Curr;
+          Curr = Curr->NextInContextAndBits.getPointer();  
+        }
+        
+        // At beginning
+        if (Prev == nullptr) {
+          D->NextInContextAndBits.setPointer(FirstDecl);
+          FirstDecl = D;
+        } else if (Curr == nullptr) {
+          // End
+          LastDecl->NextInContextAndBits.setPointer(D);
+          LastDecl = D;
+        } else {
+          D->NextInContextAndBits.setPointer(Curr);
+          Prev->NextInContextAndBits.setPointer(D);
+        }
+      } else {
+        LastDecl->NextInContextAndBits.setPointer(D);
+        LastDecl = D;
+      }
+    } else {
+      LastDecl->NextInContextAndBits.setPointer(D);
+      LastDecl = D;
+    }
   } else {
     FirstDecl = LastDecl = D;
   }

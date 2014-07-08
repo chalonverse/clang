@@ -423,6 +423,12 @@ def Availability : InheritableAttr {
   let Documentation = [AvailabilityDocs];
 }
 
+def AutoArrange : InheritableAttr {
+  let Spellings = [CXX11<"clang", "autoarrange">];
+  let Subjects = SubjectList<[Struct], ErrorDiag, "ExpectedStruct">;
+  let Documentation = [Undocumented];
+}
+
 def Blocks : InheritableAttr {
   let Spellings = [GNU<"blocks">];
   let Args = [EnumArgument<"Type", "BlockType", ["byref"], ["ByRef"]>];
